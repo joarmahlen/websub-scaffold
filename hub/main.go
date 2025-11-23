@@ -18,7 +18,6 @@ import (
 )
 
 type Subscription struct {
-	Topic    string
 	Callback string
 	Secret  string
 }
@@ -29,7 +28,7 @@ type Message struct {
 }
 
 var (
-    subscriptions = make([]Subscription, 0)
+    subscriptions = make(map[string][]Subscription)
     subsMutex     sync.RWMutex
 )
 
@@ -108,8 +107,16 @@ func handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	subsMutex.Lock()
-	subscriptions = append(subscriptions, Subscription{
-		Topic:    topic,
+
+	for _, sub := range subscriptions[topic] {
+		if sub.Callback == callback {
+			http.Error(w, "Subscription for this topic already exists", http.StatusBadRequest)
+			subsMutex.Unlock()
+			return
+		}
+	}
+
+	subscriptions[topic] = append(subscriptions[topic], Subscription{
 		Callback: callback,
 		Secret:   secret,
 	})
@@ -132,12 +139,7 @@ func handlePublish(w http.ResponseWriter, r *http.Request) {
 	}
 
 	subsMutex.RLock()
-	var matchingSubs []Subscription
-	for _, sub := range subscriptions {
-		if sub.Topic == message.Topic {
-			matchingSubs = append(matchingSubs, sub)
-		}
-	}
+	matchingSubs := subscriptions[message.Topic]
 	subsMutex.RUnlock()
 
 	var wg sync.WaitGroup
